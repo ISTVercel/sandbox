@@ -26,9 +26,9 @@ import type { APINetworkPolicy } from "../api-client/api-client";
  * }
  */
 export type NetworkPolicy =
-  | { type: "internet-access" }
-  | { type: "no-access" }
-  | {
+  | { type: "internet-access" } & Record<string, unknown>
+  | { type: "no-access" } & Record<string, unknown>
+  | ({
       type: "restricted";
       /**
        * List of domains to allow traffic to.
@@ -45,7 +45,7 @@ export type NetworkPolicy =
        * These take precedence over allowed domains and CIDRs.
        */
       deniedCIDRs?: string[];
-    };
+    } & Record<string, unknown>);
 
 /**
  * Converts the SDK NetworkPolicy to the API format.
@@ -57,17 +57,14 @@ export function toAPINetworkPolicy(
     return undefined;
   }
 
+  const { type, ...rest } = policy;
   switch (policy.type) {
     case "internet-access":
-      return { mode: "default-allow" };
+      return { ...rest, mode: "default-allow" };
     case "no-access":
-      return { mode: "default-deny" };
-    case "restricted":
-      return {
-        mode: "default-deny",
-        allowedDomains: policy.allowedDomains,
-        allowedCIDRs: policy.allowedCIDRs,
-        deniedCIDRs: policy.deniedCIDRs,
-      };
+      return { ...rest, mode: "default-deny" };
+    case "restricted": {
+      return { ...rest, mode: "default-deny" };
+    }
   }
 }
