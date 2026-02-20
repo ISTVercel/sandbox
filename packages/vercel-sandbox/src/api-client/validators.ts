@@ -2,6 +2,14 @@ import { z } from "zod";
 
 export type SandboxMetaData = z.infer<typeof Sandbox>;
 
+export const InjectionRuleValidator = z.object({
+  domain: z.string(),
+  // headers are only sent in requests
+  headers: z.record(z.string()).optional(),
+  // headerNames are returned in responses
+  headerNames: z.array(z.string()).optional(),
+});
+
 export const NetworkPolicyValidator = z.union([
   z.object({ mode: z.literal("allow-all") }).passthrough(),
   z.object({ mode: z.literal("deny-all") }).passthrough(),
@@ -11,6 +19,7 @@ export const NetworkPolicyValidator = z.union([
       allowedDomains: z.array(z.string()).optional(),
       allowedCIDRs: z.array(z.string()).optional(),
       deniedCIDRs: z.array(z.string()).optional(),
+      injectionRules: z.array(InjectionRuleValidator).optional(),
     })
     .passthrough(),
 ]);

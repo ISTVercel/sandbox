@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { toAPINetworkPolicy, fromAPINetworkPolicy } from "./network-policy";
+import { fromAPINetworkPolicy, toAPINetworkPolicy } from "./network-policy";
 
 describe("toAPINetworkPolicy", () => {
   it("converts allow-all", () => {
@@ -40,6 +40,64 @@ describe("toAPINetworkPolicy", () => {
     ).toEqual({
       mode: "custom",
       allowedDomains: ["github.com"],
+      allowedCIDRs: ["10.0.0.0/8"],
+      deniedCIDRs: ["10.1.0.0/16"],
+    });
+  });
+
+  it("converts record-form domains to allowedDomains list", () => {
+    expect(
+      toAPINetworkPolicy({
+        allow: { "api.github.com": [], "github.com": [] },
+      }),
+    ).toEqual({
+      mode: "custom",
+      allowedDomains: ["api.github.com", "github.com"],
+    });
+  });
+
+  it("converts record-form with multiple domains and transforms to injectionRules", () => {
+    expect(
+      toAPINetworkPolicy({
+        allow: {
+          "api.github.com": [
+            {
+              transform: [
+                { headers: { authorization: "Bearer sk-openai", "x-org-id": "org-123" } },
+              ],
+            },
+          ],
+          "ai-gateway.vercel.sh": [
+            {
+              transform: [
+                { headers: { "x-api-key": "sk-ant-test" } },
+                { headers: { "anthropic-version": "2024-01-01" } },
+              ],
+            },
+          ],
+          "registry.npmjs.org": [],
+          "*": [],
+        },
+        subnets: { allow: ["10.0.0.0/8"], deny: ["10.1.0.0/16"] },
+      }),
+    ).toEqual({
+      mode: "custom",
+      allowedDomains: [
+        "api.github.com",
+        "ai-gateway.vercel.sh",
+        "registry.npmjs.org",
+        "*",
+      ],
+      injectionRules: [
+        {
+          domain: "api.github.com",
+          headers: { authorization: "Bearer sk-openai", "x-org-id": "org-123" },
+        },
+        {
+          domain: "ai-gateway.vercel.sh",
+          headers: { "x-api-key": "sk-ant-test", "anthropic-version": "2024-01-01" },
+        },
+      ],
       allowedCIDRs: ["10.0.0.0/8"],
       deniedCIDRs: ["10.1.0.0/16"],
     });
@@ -107,7 +165,7 @@ describe("fromAPINetworkPolicy", () => {
     expect(fromAPINetworkPolicy({ mode: "custom" })).toEqual({});
   });
 
-  it("roundtrips through both conversions", () => {
+  it("roundtrips string-form policies through both conversions", () => {
     const policies = [
       "allow-all" as const,
       "deny-all" as const,
@@ -122,5 +180,51 @@ describe("fromAPINetworkPolicy", () => {
     for (const policy of policies) {
       expect(fromAPINetworkPolicy(toAPINetworkPolicy(policy))).toEqual(policy);
     }
+  });
+
+  it("converts injectionRules with multiple domains, headers, and subnets", () => {
+    expect(
+      fromAPINetworkPolicy({
+        mode: "custom",
+        allowedDomains: [
+          "api.github.com",
+          "ai-gateway.vercel.sh",
+          "registry.npmjs.org",
+          "*",
+        ],
+        injectionRules: [
+          {
+            domain: "api.github.com",
+            headerNames: ["authorization", "x-foo"],
+          },
+          {
+            domain: "ai-gateway.vercel.sh",
+            headerNames: ["authorization", "x-bar"],
+          },
+        ],
+        allowedCIDRs: ["10.0.0.0/8"],
+        deniedCIDRs: ["10.1.0.0/16"],
+      }),
+    ).toEqual({
+      allow: {
+        "api.github.com": [
+          {
+            transform: [
+              { headers: { authorization: "<redacted>", "x-foo": "<redacted>" } },
+            ],
+          },
+        ],
+        "ai-gateway.vercel.sh": [
+          {
+            transform: [
+              { headers: { authorization: "<redacted>", "x-bar": "<redacted>" } },
+            ],
+          },
+        ],
+        "registry.npmjs.org": [],
+        "*": [],
+      },
+      subnets: { allow: ["10.0.0.0/8"], deny: ["10.1.0.0/16"] },
+    });
   });
 });
